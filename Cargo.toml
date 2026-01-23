@@ -1,0 +1,11 @@
+[package]
+name = "duplicate-file-finder"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.100"
+clap = { version = "4.5.29", features = ["derive"] }
+indicatif = "0.17.11"
+sha2 = "0.10.9"
+walkdir = "2.5.0"
