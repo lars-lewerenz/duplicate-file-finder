@@ -19,6 +19,21 @@ cargo run --
 cargo run -- /path/to/folder
 ```
 
+## Install
+
+### Build once, copy the binary
+
+```sh
+cargo build --release
+cp target/release/duplicate-file-finder /usr/local/bin/
+```
+
+### Cargo-managed install
+
+```sh
+cargo install --path .
+```
+
 ## Output
 
 Duplicates are grouped by file paths, followed by total runtime and processing rates.
