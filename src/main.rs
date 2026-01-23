@@ -11,6 +11,10 @@ use std::{
 };
 use walkdir::WalkDir;
 
+const READ_BUFFER_BYTES: usize = 1024 * 64;
+const HASH_UPDATE_EVERY: u64 = 2;
+const SCAN_UPDATE_EVERY: u64 = 1;
+
 #[derive(Parser)]
 #[command(
     name = "duplicate-file-finder",
@@ -71,7 +75,9 @@ fn collect_by_size(target: &Path, progress: &ProgressBar) -> (HashMap<u64, Vec<P
             }
         }
         scanned += 1;
-        progress.set_message(format!("Scanned {scanned} files"));
+        if scanned % SCAN_UPDATE_EVERY == 0 {
+            progress.set_message(format!("Scanned {scanned} files"));
+        }
     }
 
     (by_size, scanned)
@@ -94,9 +100,12 @@ fn hash_candidates(
                 Err(err) => {
                     eprintln!("Skipping file {}: {err}", path.display());
                 }
+
             }
             processed += 1;
-            progress.set_message(format!("Hashed {processed} files"));
+            if processed % HASH_UPDATE_EVERY == 0 {
+                progress.set_message(format!("Hashed {processed} files"));
+            }
         }
     }
 
@@ -104,17 +113,27 @@ fn hash_candidates(
 }
 
 fn print_duplicates(by_hash: &HashMap<String, Vec<PathBuf>>) {
-    let mut found = false;
-    for paths in by_hash.values().filter(|paths| paths.len() > 1) {
-        found = true;
+    let mut groups: Vec<Vec<PathBuf>> = by_hash
+        .values()
+        .filter(|paths| paths.len() > 1)
+        .map(|paths| {
+            let mut group = paths.clone();
+            group.sort_by(|a, b| a.as_os_str().cmp(b.as_os_str()));
+            group
+        })
+        .collect();
+    groups.sort_by(|a, b| a[0].as_os_str().cmp(b[0].as_os_str()));
+
+    if groups.is_empty() {
+        println!("No duplicates found.");
+        return;
+    }
+
+    for paths in groups {
         println!("Duplicate group:");
         for path in paths {
             println!("  {}", path.display());
         }
-    }
-
-    if !found {
-        println!("No duplicates found.");
     }
 }
 
@@ -137,7 +156,7 @@ fn compute_sha256(path: &Path) -> Result<String> {
         .with_context(|| format!("Failed to open file {}", path.display()))?;
     let mut reader = BufReader::new(file);
     let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 1024 * 64];
+    let mut buffer = [0u8; READ_BUFFER_BYTES];
 
     loop {
         let read = reader
