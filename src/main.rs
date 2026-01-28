@@ -171,3 +171,86 @@ fn compute_sha256(path: &Path) -> Result<String> {
 
     Ok(format!("{:x}", hasher.finalize()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn find_duplicate_groups(root: &Path) -> Vec<Vec<PathBuf>> {
+        let progress = ProgressBar::hidden();
+        let (by_size, _) = collect_by_size(root, &progress);
+        let (by_hash, _) = hash_candidates(&by_size, &progress);
+        let mut groups: Vec<Vec<PathBuf>> = by_hash
+            .values()
+            .filter(|paths| paths.len() > 1)
+            .map(|paths| {
+                let mut group = paths.clone();
+                group.sort();
+                group
+            })
+            .collect();
+        groups.sort_by(|a, b| a[0].cmp(&b[0]));
+        groups
+    }
+
+    #[test]
+    fn detects_identical_files() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let a = temp.path().join("a.txt");
+        let b = temp.path().join("b.txt");
+        fs::write(&a, b"hello")?;
+        fs::write(&b, b"hello")?;
+
+        let groups = find_duplicate_groups(temp.path());
+        assert_eq!(groups.len(), 1);
+        assert!(groups[0].contains(&a));
+        assert!(groups[0].contains(&b));
+        Ok(())
+    }
+
+    #[test]
+    fn ignores_same_size_different_content() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let a = temp.path().join("a.txt");
+        let b = temp.path().join("b.txt");
+        fs::write(&a, b"ab")?;
+        fs::write(&b, b"cd")?;
+
+        let groups = find_duplicate_groups(temp.path());
+        assert!(groups.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn groups_empty_files() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let a = temp.path().join("a.txt");
+        let b = temp.path().join("b.txt");
+        fs::write(&a, b"")?;
+        fs::write(&b, b"")?;
+
+        let groups = find_duplicate_groups(temp.path());
+        assert_eq!(groups.len(), 1);
+        assert!(groups[0].contains(&a));
+        assert!(groups[0].contains(&b));
+        Ok(())
+    }
+
+    #[test]
+    fn finds_duplicates_in_nested_dirs() -> Result<()> {
+        let temp = tempfile::tempdir()?;
+        let nested = temp.path().join("nested");
+        fs::create_dir_all(&nested)?;
+        let a = temp.path().join("a.txt");
+        let b = nested.join("b.txt");
+        fs::write(&a, b"nested")?;
+        fs::write(&b, b"nested")?;
+
+        let groups = find_duplicate_groups(temp.path());
+        assert_eq!(groups.len(), 1);
+        assert!(groups[0].contains(&a));
+        assert!(groups[0].contains(&b));
+        Ok(())
+    }
+}
